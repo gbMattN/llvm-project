@@ -62,6 +62,12 @@ static cl::opt<bool>
                           cl::desc("Writes always set the type"), cl::Hidden,
                           cl::init(false));
 
+static cl::opt<bool> ClOutlineInstrumentation(
+    "tysan-outline-instrumentation",
+    cl::desc("Uses function calls for all TySan instrumentation, reducing "
+             "ELF size"),
+    cl::Hidden, cl::init(false));
+
 STATISTIC(NumInstrumentedAccesses, "Number of instrumented accesses");
 
 static Regex AnonNameRegex("^_ZTS.*N[1-9][0-9]*_GLOBAL__N");
@@ -85,6 +91,10 @@ private:
   Value *getShadowBase(Function &F);
   Value *getAppMemMask(Function &F);
 
+  bool instrumentWithShadowUpdateOutlined(
+      IRBuilder<> &IRB, const MDNode *TBAAMD, Value *Ptr, uint64_t AccessSize,
+      bool IsRead, bool IsWrite, bool ForceSetType, bool SanitizeFunction,
+      TypeDescriptorsMapTy &TypeDescriptors, const DataLayout &DL);
   bool instrumentWithShadowUpdate(IRBuilder<> &IRB, const MDNode *TBAAMD,
                                   Value *Ptr, uint64_t AccessSize, bool IsRead,
                                   bool IsWrite, Value *&ShadowBase,
@@ -116,6 +126,9 @@ private:
 
   // Callbacks to run-time library are computed in doInitialization.
   Function *TysanCheck;
+  Function *TysanIntrumentMemInst;
+  Function *TysanInstrumentWithShadowUpdate;
+  Function *TysanSetShadowType;
   Function *TysanCtorFunction;
   Function *TysanGlobalsSetTypeFunction;
 };
@@ -134,6 +147,7 @@ TypeSanitizer::TypeSanitizer(Module &M)
 void TypeSanitizer::initializeCallbacks(Module &M) {
   IRBuilder<> IRB(M.getContext());
   OrdTy = IRB.getInt32Ty();
+  Type *BoolType = IRB.getInt1Ty();
 
   AttributeList Attr;
   Attr = Attr.addFnAttribute(M.getContext(), Attribute::NoUnwind);
@@ -141,10 +155,29 @@ void TypeSanitizer::initializeCallbacks(Module &M) {
   TysanCheck = cast<Function>(
       M.getOrInsertFunction(kTysanCheckName, Attr, IRB.getVoidTy(),
                             IRB.getPtrTy(), // Pointer to data to be read.
-                            OrdTy,              // Size of the data in bytes.
+                            OrdTy,          // Size of the data in bytes.
                             IRB.getPtrTy(), // Pointer to type descriptor.
-                            OrdTy               // Flags.
+                            OrdTy           // Flags.
                             )
+          .getCallee());
+
+  TysanIntrumentMemInst = cast<Function>(
+      M.getOrInsertFunction("__tysan_instrument_mem_inst", Attr,
+                            IRB.getVoidTy(), IRB.getPtrTy(), IRB.getPtrTy(),
+                            IRB.getInt64Ty(), BoolType
+
+                            )
+          .getCallee());
+
+  TysanInstrumentWithShadowUpdate = cast<Function>(
+      M.getOrInsertFunction("__tysan_instrument_with_shadow_update", Attr,
+                            IRB.getVoidTy(), IRB.getPtrTy(), IRB.getPtrTy(),
+                            BoolType, IRB.getInt64Ty(), OrdTy)
+          .getCallee());
+
+  TysanSetShadowType = cast<Function>(
+      M.getOrInsertFunction("__tysan_set_shadow_type", Attr, IRB.getVoidTy(),
+                            IRB.getPtrTy(), IRB.getPtrTy(), IRB.getInt64Ty())
           .getCallee());
 
   TysanCtorFunction = cast<Function>(
@@ -185,12 +218,20 @@ void TypeSanitizer::instrumentGlobals() {
 
     IRBuilder<> IRB(
         TysanGlobalsSetTypeFunction->getEntryBlock().getTerminator());
+
+    // Try and figure out how to set a variable here
+
     Type *AccessTy = GV->getValueType();
     assert(AccessTy->isSized());
     uint64_t AccessSize = DL.getTypeStoreSize(AccessTy);
-    instrumentWithShadowUpdate(IRB, TBAAMD, GV, AccessSize, false, false,
-                               ShadowBase, AppMemMask, true, false,
-                               TypeDescriptors, DL);
+    if (ClOutlineInstrumentation)
+      instrumentWithShadowUpdateOutlined(IRB, TBAAMD, GV, AccessSize, false,
+                                         false, true, false, TypeDescriptors,
+                                         DL);
+    else
+      instrumentWithShadowUpdate(IRB, TBAAMD, GV, AccessSize, false, false,
+                                 ShadowBase, AppMemMask, true, false,
+                                 TypeDescriptors, DL);
   }
 
   if (TysanGlobalsSetTypeFunction) {
@@ -583,6 +624,40 @@ static Value *ConvertToShadowDataInt(IRBuilder<> &IRB, Value *Ptr,
       ShadowBase, "shadow.ptr.int");
 }
 
+bool TypeSanitizer::instrumentWithShadowUpdateOutlined(
+    IRBuilder<> &IRB, const MDNode *TBAAMD, Value *Ptr, uint64_t AccessSize,
+    bool IsRead, bool IsWrite, bool ForceSetType, bool SanitizeFunction,
+    TypeDescriptorsMapTy &TypeDescriptors, const DataLayout &DL) {
+
+  Constant *TDGV;
+  if (TBAAMD)
+    TDGV = TypeDescriptors[TBAAMD];
+  else
+    TDGV = Constant::getNullValue(IRB.getPtrTy());
+
+  Value *TD = IRB.CreateBitCast(TDGV, IRB.getPtrTy());
+
+  if (!ForceSetType && (!ClWritesAlwaysSetType || IsRead)) {
+    // We need to check the type here. If the type is unknown, then the read
+    // sets the type. If the type is known, then it is checked. If the type
+    // doesn't match, then we call the runtime (which may yet determine that
+    // the mismatch is okay).
+
+    Constant *Flags =
+        ConstantInt::get(OrdTy, (int)IsRead | (((int)IsWrite) << 1));
+
+    IRB.CreateCall(TysanInstrumentWithShadowUpdate,
+                   {Ptr, TD, SanitizeFunction ? IRB.getTrue() : IRB.getFalse(),
+                    IRB.getInt64(AccessSize), Flags});
+  } else if (ForceSetType || IsWrite) {
+    // In the mode where writes always set the type, for a write (which does
+    // not also read), we just set the type.
+    IRB.CreateCall(TysanSetShadowType, {Ptr, TD, IRB.getInt64(AccessSize)});
+  }
+
+  return true;
+}
+
 bool TypeSanitizer::instrumentWithShadowUpdate(
     IRBuilder<> &IRB, const MDNode *TBAAMD, Value *Ptr, uint64_t AccessSize,
     bool IsRead, bool IsWrite, Value *&ShadowBase, Value *&AppMemMask,
@@ -603,6 +678,7 @@ bool TypeSanitizer::instrumentWithShadowUpdate(
 
   Value *ShadowDataInt = ConvertToShadowDataInt(IRB, Ptr, IntptrTy, PtrShift,
                                                 ShadowBase, AppMemMask);
+
   Type *Int8PtrPtrTy = IRB.getPtrTy()->getPointerTo();
   Value *ShadowData =
       IRB.CreateIntToPtr(ShadowDataInt, Int8PtrPtrTy, "shadow.ptr");
@@ -732,11 +808,19 @@ bool TypeSanitizer::instrumentMemoryAccess(
     TypeDescriptorsMapTy &TypeDescriptors, const DataLayout &DL) {
   IRBuilder<> IRB(I);
   assert(MLoc.Size.isPrecise());
-  if (instrumentWithShadowUpdate(
-          IRB, MLoc.AATags.TBAA, const_cast<Value *>(MLoc.Ptr),
-          MLoc.Size.getValue(), I->mayReadFromMemory(), I->mayWriteToMemory(),
-          ShadowBase, AppMemMask, false, SanitizeFunction, TypeDescriptors,
-          DL)) {
+  if (ClOutlineInstrumentation) {
+    if (instrumentWithShadowUpdateOutlined(
+            IRB, MLoc.AATags.TBAA, const_cast<Value *>(MLoc.Ptr),
+            MLoc.Size.getValue(), I->mayReadFromMemory(), I->mayWriteToMemory(),
+            false, SanitizeFunction, TypeDescriptors, DL)) {
+      ++NumInstrumentedAccesses;
+      return true;
+    }
+  } else if (instrumentWithShadowUpdate(
+                 IRB, MLoc.AATags.TBAA, const_cast<Value *>(MLoc.Ptr),
+                 MLoc.Size.getValue(), I->mayReadFromMemory(),
+                 I->mayWriteToMemory(), ShadowBase, AppMemMask, false,
+                 SanitizeFunction, TypeDescriptors, DL)) {
     ++NumInstrumentedAccesses;
     return true;
   }
