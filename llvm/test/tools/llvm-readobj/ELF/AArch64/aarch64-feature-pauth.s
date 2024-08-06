@@ -27,12 +27,13 @@ end:
 # ELF-NEXT:   GNU                   0x00000018	NT_GNU_PROPERTY_TYPE_0 (property note)
 # ELF-NEXT:   AArch64 PAuth ABI core info: platform [[PLATFORM]], version [[VERSION]]
 
-# OBJ:      Notes [
+# OBJ:      NoteSections [
 # OBJ-NEXT:   NoteSection {
 # OBJ-NEXT:     Name: .note.gnu.property
 # OBJ-NEXT:     Offset: 0x40
 # OBJ-NEXT:     Size: 0x28
-# OBJ-NEXT:     Note {
+# OBJ-NEXT:     Notes [
+# OBJ-NEXT:     {
 # OBJ-NEXT:       Owner: GNU
 # OBJ-NEXT:       Data size: 0x18
 # OBJ-NEXT:       Type: NT_GNU_PROPERTY_TYPE_0 (property note)
@@ -40,6 +41,7 @@ end:
 # OBJ-NEXT:         AArch64 PAuth ABI core info: platform [[PLATFORM]], version [[VERSION]]
 # OBJ-NEXT:       ]
 # OBJ-NEXT:     }
+# OBJ-NEXT:    ]
 # OBJ-NEXT:   }
 # OBJ-NEXT: ]
 
@@ -106,12 +108,12 @@ end:
 # RUN: llvm-mc -filetype=obj -triple aarch64-linux-gnu gnu-0x10000002-85.s -o gnu-0x10000002-85.o
 # RUN: llvm-readelf --notes gnu-0x10000002-85.o | \
 # RUN:   FileCheck --check-prefix=ELF -DPLATFORM="0x10000002 (llvm_linux)" \
-# RUN:   -DVERSION="0x55 (PointerAuthIntrinsics, !PointerAuthCalls, PointerAuthReturns, !PointerAuthAuthTraps, PointerAuthVTPtrAddressDiscrimination, !PointerAuthVTPtrTypeDiscrimination, PointerAuthInitFini)" %s
+# RUN:   -DVERSION="0x55 (PointerAuthIntrinsics, !PointerAuthCalls, PointerAuthReturns, !PointerAuthAuthTraps, PointerAuthVTPtrAddressDiscrimination, !PointerAuthVTPtrTypeDiscrimination, PointerAuthInitFini, !PointerAuthInitFiniAddressDiscrimination)" %s
 # RUN: llvm-readobj --notes gnu-0x10000002-85.o | \
 # RUN:   FileCheck --check-prefix=OBJ -DPLATFORM="0x10000002 (llvm_linux)" \
-# RUN:   -DVERSION="0x55 (PointerAuthIntrinsics, !PointerAuthCalls, PointerAuthReturns, !PointerAuthAuthTraps, PointerAuthVTPtrAddressDiscrimination, !PointerAuthVTPtrTypeDiscrimination, PointerAuthInitFini)" %s
+# RUN:   -DVERSION="0x55 (PointerAuthIntrinsics, !PointerAuthCalls, PointerAuthReturns, !PointerAuthAuthTraps, PointerAuthVTPtrAddressDiscrimination, !PointerAuthVTPtrTypeDiscrimination, PointerAuthInitFini, !PointerAuthInitFiniAddressDiscrimination)" %s
 
-#--- gnu-0x10000002-128.s
+#--- gnu-0x10000002-256.s
 .section ".note.gnu.property", "a"
   .long 4           // Name length is always 4 ("GNU")
   .long end - begin // Data length
@@ -123,15 +125,15 @@ begin:
   .long 0xc0000001  // Type: GNU_PROPERTY_AARCH64_FEATURE_PAUTH
   .long 16          // Data size
   .quad 0x10000002  // PAuth ABI platform
-  .quad 128         // PAuth ABI version
+  .quad 256         // PAuth ABI version
   .p2align 3        // Align to 8 byte for 64 bit
 end:
 
-# RUN: llvm-mc -filetype=obj -triple aarch64-linux-gnu gnu-0x10000002-128.s -o gnu-0x10000002-128.o
-# RUN: llvm-readelf --notes gnu-0x10000002-128.o | \
-# RUN:   FileCheck --check-prefix=ELF -DPLATFORM="0x10000002 (llvm_linux)" -DVERSION="0x80 (unknown)" %s
-# RUN: llvm-readobj --notes gnu-0x10000002-128.o | \
-# RUN:   FileCheck --check-prefix=OBJ -DPLATFORM="0x10000002 (llvm_linux)" -DVERSION="0x80 (unknown)" %s
+# RUN: llvm-mc -filetype=obj -triple aarch64-linux-gnu gnu-0x10000002-256.s -o gnu-0x10000002-256.o
+# RUN: llvm-readelf --notes gnu-0x10000002-256.o | \
+# RUN:   FileCheck --check-prefix=ELF -DPLATFORM="0x10000002 (llvm_linux)" -DVERSION="0x100 (unknown)" %s
+# RUN: llvm-readobj --notes gnu-0x10000002-256.o | \
+# RUN:   FileCheck --check-prefix=OBJ -DPLATFORM="0x10000002 (llvm_linux)" -DVERSION="0x100 (unknown)" %s
 
 #--- gnu-short.s
 .section ".note.gnu.property", "a"
@@ -162,12 +164,13 @@ end:
 # ELF-ERR-NEXT:   GNU                   0x000000[[DATASIZE]]	NT_GNU_PROPERTY_TYPE_0 (property note)
 # ELF-ERR-NEXT:   AArch64 PAuth ABI core info: [[ERR]]
 
-# OBJ-ERR:      Notes [
+# OBJ-ERR:      NoteSections [
 # OBJ-ERR-NEXT:   NoteSection {
 # OBJ-ERR-NEXT:     Name: .note.gnu.property
 # OBJ-ERR-NEXT:     Offset: 0x40
 # OBJ-ERR-NEXT:     Size: 0x[[SIZE]]
-# OBJ-ERR-NEXT:     Note {
+# OBJ-ERR-NEXT:     Notes [
+# OBJ-ERR-NEXT:     {
 # OBJ-ERR-NEXT:       Owner: GNU
 # OBJ-ERR-NEXT:       Data size: 0x[[DATASIZE]]
 # OBJ-ERR-NEXT:       Type: NT_GNU_PROPERTY_TYPE_0 (property note)
@@ -175,6 +178,7 @@ end:
 # OBJ-ERR-NEXT:         AArch64 PAuth ABI core info: [[ERR]]
 # OBJ-ERR-NEXT:       ]
 # OBJ-ERR-NEXT:     }
+# OBJ-ERR-NEXT:    ]
 # OBJ-ERR-NEXT:   }
 # OBJ-ERR-NEXT: ]
 
