@@ -857,8 +857,10 @@ bool TypeSanitizer::instrumentMemInst(Value *V, Value *&ShadowBase,
 
 PreservedAnalyses TypeSanitizerPass::run(Function &F,
                                          FunctionAnalysisManager &FAM) {
-  TypeSanitizer TySan(*F.getParent());
-  TySan.run(F, FAM.getResult<TargetLibraryAnalysis>(F));
+  if(!F.hasFnAttribute(Attribute::DisableSanitizerInstrumentation)){
+    TypeSanitizer TySan(*F.getParent());
+    TySan.run(F, FAM.getResult<TargetLibraryAnalysis>(F));
+  }
   return PreservedAnalyses::none();
 }
 
