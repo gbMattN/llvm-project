@@ -449,9 +449,47 @@ static void TySanInitializePlatformEarly() {
   __tysan_app_memory_mask = AppMask();
 }
 
+
+#include <stdio.h>
+#include <sys/mman.h>
+#include <interception/interception.h>
+#include <errno.h>
+
 namespace __tysan {
 bool tysan_inited = false;
 bool tysan_init_is_running;
+Mapped_Shadow_Mem msm;
+void Mapped_Shadow_Mem::createNode(uptr key, Node* node){
+    __sanitizer::Printf("      Creating a new node for key %lx\n", key);
+    char filename[256];
+    sprintf(filename, "shadow_filename_%lx.bin", key);
+    int fileDescriptor = open(filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
+    if(fileDescriptor == -1){
+      int errsv = errno;
+      Printf("ERROR: fd is bad: %d\n", errsv);
+    }
+    ftruncate(fileDescriptor, CHUNK_MASK);
+
+    node->fileDescriptor = fileDescriptor;
+    node->key = key;
+    node->mmRegion = (void**)mmap(
+      NULL, 
+      CHUNK_MASK, 
+      PROT_READ | PROT_WRITE, 
+      MAP_PRIVATE,
+      fileDescriptor, 
+      0
+    );
+
+    if(node->mmRegion == (void*)-1){
+      int errsv = errno;
+      Printf("ERROR: err is %d\n", errsv);
+    }
+    else
+    __sanitizer::Printf("      The mapping was successfully done\n");
+
+    node->nextNode = node->previousNode = nullptr;
+  }
 } // namespace __tysan
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void __tysan_init() {

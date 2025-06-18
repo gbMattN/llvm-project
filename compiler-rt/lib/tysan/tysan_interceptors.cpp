@@ -16,6 +16,7 @@
 #include "sanitizer_common/sanitizer_common.h"
 #include "tysan/tysan.h"
 
+
 #if SANITIZER_LINUX && !SANITIZER_ANDROID
 #define TYSAN_INTERCEPT___STRDUP 1
 #else
@@ -67,7 +68,10 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
 
 INTERCEPTOR(void *, mmap, void *addr, SIZE_T length, int prot, int flags,
             int fd, OFF_T offset) {
+              Printf("We went into the interceptor\n");
   void *res = REAL(mmap)(addr, length, prot, flags, fd, offset);
+  return res;
+
   if (res != (void *)-1)
     tysan_set_type_unknown(res, RoundUpTo(length, GetPageSize()));
   return res;
