@@ -19,6 +19,7 @@
 #endif
 
 #include "sanitizer_common/sanitizer_common.h"
+#include "sanitizer_common/sanitizer_mapped_shadow.h"
 #include "tsan_defs.h"
 
 namespace __tsan {
@@ -935,8 +936,13 @@ struct IsShadowMemImpl {
   }
 };
 
+#define USING_MSM
+
 ALWAYS_INLINE
 bool IsShadowMem(RawShadow *p) {
+  #ifdef USING_MSM
+  if(msm.isMapped((uptr)p)) return true;
+  #endif
   return SelectMapping<IsShadowMemImpl>(reinterpret_cast<uptr>(p));
 }
 
@@ -965,6 +971,9 @@ struct MemToShadowImpl {
 
 ALWAYS_INLINE
 RawShadow *MemToShadow(uptr x) {
+  #ifdef USING_MSM
+  if(void* result = msm[x]) return (RawShadow*)result;
+  #endif
   return reinterpret_cast<RawShadow *>(SelectMapping<MemToShadowImpl>(x));
 }
 

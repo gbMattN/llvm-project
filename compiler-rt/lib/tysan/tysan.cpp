@@ -471,41 +471,6 @@ static void TySanInitializePlatformEarly() {
 namespace __tysan {
 bool tysan_inited = false;
 bool tysan_init_is_running;
-Mapped_Shadow_Mem msm;
-void Mapped_Shadow_Mem::createNode(uptr key, Node* node){
-    //__sanitizer::Printf("  MSM Create Node Key %p\n", (void*)key);
-    char filename[256];
-    sprintf(filename, "shadow_filename_%lx.bin", key);
-    int fileDescriptor = open(filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
-    if(fileDescriptor == -1){
-      int errsv = errno;
-      Printf("ERROR: fd is bad: %d\n", errsv);
-    }
-    ftruncate(fileDescriptor, CHUNK_MASK);
-
-    node->fileDescriptor = fileDescriptor;
-    node->key = key;
-    node->mmRegion = (uptr)mmap64(
-      NULL, 
-      CHUNK_MASK, 
-      PROT_READ | PROT_WRITE, 
-      MAP_PRIVATE,
-      fileDescriptor, 
-      0
-    );
-
-    if((void*)node->mmRegion == (void*)-1){
-      int errsv = errno;
-      __sanitizer::Printf("ERROR: err is %d\n", errsv);
-    }
-    else if((void*)node->mmRegion == MAP_FAILED){
-      int errsv = errno;
-      __sanitizer::Printf("ERROR: err is %d\n", errsv);
-    }
-    //else __sanitizer::Printf("  MSM Create Node region has been mapped to %p\n", (void*)node->mmRegion);
-
-    node->nextNode = node->previousNode = nullptr;
-  }
 } // namespace __tysan
 
 extern "C" SANITIZER_INTERFACE_ATTRIBUTE void __tysan_init() {

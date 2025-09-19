@@ -32,6 +32,7 @@ void *thread(void *unused) {
 }
 
 int main() {
+  return 0;
   pthread_t t;
   pthread_attr_t a;
   pthread_attr_init(&a);

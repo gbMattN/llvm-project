@@ -45,6 +45,7 @@ set(SANITIZER_SOURCES_NOTERMINATION
   sanitizer_type_traits.cpp
   sanitizer_win.cpp
   sanitizer_win_interception.cpp
+  sanitizer_mapped_shadow.cpp
   )
 
 set(SANITIZER_SOURCES

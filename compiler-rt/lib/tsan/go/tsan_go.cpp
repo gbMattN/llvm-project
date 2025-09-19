@@ -289,3 +289,5 @@ void __tsan_report_count(u64 *pn) {
 
 }  // extern "C"
 }  // namespace __tsan
+
+#include "sanitizer_common/sanitizer_mapped_shadow.cpp"

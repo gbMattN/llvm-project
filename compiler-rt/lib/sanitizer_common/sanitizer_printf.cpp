@@ -366,3 +366,5 @@ void InternalScopedString::AppendF(const char *format, ...) {
 }
 
 } // namespace __sanitizer
+
+//#include "sanitizer_common/sanitizer_mapped_shadow.cpp"

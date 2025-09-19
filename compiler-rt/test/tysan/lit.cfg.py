@@ -55,7 +55,7 @@ def push_dynamic_library_lookup_path(config, new_path):
 
 
 # Setup config name.
-config.name = "TypeSanitizer" + config.name_suffix
+config.name = "TypeSanitizer" + "_hehe"# config.name_suffix
 
 # Platform-specific default TYSAN_OPTIONS for lit tests.
 default_tysan_opts = list(config.default_sanitizer_opts)
