@@ -89,8 +89,10 @@ SANITIZER_INTERFACE_ATTRIBUTE void *__sanitizer_internal_memset(void *s, int c,
     v |= v << 8;
     v |= v << 16;
     v |= v << 32;
-    for (; p < e; p += 2)
+    //__sanitizer::Printf("__internal memset %p %d %zu, p is %p\n", s, c, n, p);
+    for (; p < e; p += 2){
       p[0] = p[1] = v;
+    }
     return s;
   }
   // The next line prevents Clang from making a call to memset() instead of the

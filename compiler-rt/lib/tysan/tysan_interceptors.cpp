@@ -68,7 +68,6 @@ INTERCEPTOR(void *, memcpy, void *dst, const void *src, uptr size) {
 
 INTERCEPTOR(void *, mmap, void *addr, SIZE_T length, int prot, int flags,
             int fd, OFF_T offset) {
-              Printf("We went into the interceptor\n");
   void *res = REAL(mmap)(addr, length, prot, flags, fd, offset);
   return res;
 
@@ -80,9 +79,10 @@ INTERCEPTOR(void *, mmap, void *addr, SIZE_T length, int prot, int flags,
 #if !SANITIZER_APPLE
 INTERCEPTOR(void *, mmap64, void *addr, SIZE_T length, int prot, int flags,
             int fd, OFF64_T offset) {
+              Printf("INTERCEPTOR for MMAP64 (turned off)\n");
   void *res = REAL(mmap64)(addr, length, prot, flags, fd, offset);
-  if (res != (void *)-1)
-    tysan_set_type_unknown(res, RoundUpTo(length, GetPageSize()));
+  // if (res != (void *)-1)
+  //   tysan_set_type_unknown(res, RoundUpTo(length, GetPageSize()));
   return res;
 }
 #endif

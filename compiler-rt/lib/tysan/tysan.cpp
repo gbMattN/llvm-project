@@ -156,6 +156,11 @@ static bool isAliasingLegalUp(tysan_type_descriptor *TDA,
 
 static bool isAliasingLegal(tysan_type_descriptor *TDA,
                             tysan_type_descriptor *TDB, int TDAOffset = 0) {
+  __sanitizer::Printf("IsAlisaing legal, TDA %p ", TDA);
+  printTDName(TDA);
+__sanitizer::Printf(" vs TDB %p ", TDB);
+  printTDName(TDB);
+  __sanitizer::Printf("\n");
   if (TDA == TDB || !TDB || !TDA)
     return true;
 
@@ -295,9 +300,12 @@ static void __tysan_check_internal(void *addr, int size,
   else
     AccessStr = "ATOMIC UPDATE";
 
+  __sanitizer::Printf("TCI addr %p, td %p, size %d, getting shadow for addr\n", addr, td, size);
   tysan_type_descriptor **OldTDPtr = shadow_for(addr);
+  __sanitizer::Printf("\tGetting the value at the shadow mem, value at %p is %p\n", OldTDPtr, *OldTDPtr);
   tysan_type_descriptor *OldTD = *OldTDPtr;
   if (((sptr)OldTD) < 0) {
+    __sanitizer::Printf("TCI OldTD<0, offset into prior type");
     int i = -((sptr)OldTD);
     OldTDPtr -= i;
     OldTD = *OldTDPtr;
@@ -309,6 +317,7 @@ static void __tysan_check_internal(void *addr, int size,
     return;
   }
 
+  __sanitizer::Printf("\tCheck alias legality of td vs old td\n");
   if (!isAliasingLegal(td, OldTD)) {
     reportError(addr, size, td, OldTD, AccessStr, "accesses an existing object",
                 0, pc, bp, sp);
@@ -340,6 +349,9 @@ __tysan_instrument_with_shadow_update(void *ptr, tysan_type_descriptor *td,
   tysan_type_descriptor **shadowData = shadow_for(ptr);
   tysan_type_descriptor *loadedTD = *shadowData;
   bool shadowIsNull = loadedTD == nullptr;
+  __sanitizer::Printf("TIWSU ptr %p, ttd %p access size %zu for ", ptr, td, accessSize);
+  printTDName(td);
+  __sanitizer::Printf("\n");
 
   // TODO, sanitizeFunction is known at compile time, so maybe this is split
   // into two different functions
@@ -381,6 +393,7 @@ __tysan_set_shadow_type(void *ptr, tysan_type_descriptor *td,
                         uint64_t accessSize) {
   // In the mode where writes always set the type, for a write (which does
   // not also read), we just set the type.
+  printTDName(td);
   tysan_type_descriptor **shadow = shadow_for(ptr);
   SetShadowType(td, shadow, accessSize);
 }
@@ -460,7 +473,7 @@ bool tysan_inited = false;
 bool tysan_init_is_running;
 Mapped_Shadow_Mem msm;
 void Mapped_Shadow_Mem::createNode(uptr key, Node* node){
-    __sanitizer::Printf("      Creating a new node for key %lx\n", key);
+    //__sanitizer::Printf("  MSM Create Node Key %p\n", (void*)key);
     char filename[256];
     sprintf(filename, "shadow_filename_%lx.bin", key);
     int fileDescriptor = open(filename, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
@@ -472,7 +485,7 @@ void Mapped_Shadow_Mem::createNode(uptr key, Node* node){
 
     node->fileDescriptor = fileDescriptor;
     node->key = key;
-    node->mmRegion = (void**)mmap(
+    node->mmRegion = (uptr)mmap64(
       NULL, 
       CHUNK_MASK, 
       PROT_READ | PROT_WRITE, 
@@ -481,12 +494,15 @@ void Mapped_Shadow_Mem::createNode(uptr key, Node* node){
       0
     );
 
-    if(node->mmRegion == (void*)-1){
+    if((void*)node->mmRegion == (void*)-1){
       int errsv = errno;
-      Printf("ERROR: err is %d\n", errsv);
+      __sanitizer::Printf("ERROR: err is %d\n", errsv);
     }
-    else
-    __sanitizer::Printf("      The mapping was successfully done\n");
+    else if((void*)node->mmRegion == MAP_FAILED){
+      int errsv = errno;
+      __sanitizer::Printf("ERROR: err is %d\n", errsv);
+    }
+    //else __sanitizer::Printf("  MSM Create Node region has been mapped to %p\n", (void*)node->mmRegion);
 
     node->nextNode = node->previousNode = nullptr;
   }

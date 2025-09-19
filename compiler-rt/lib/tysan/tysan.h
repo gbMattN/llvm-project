@@ -69,25 +69,25 @@ public:
 
   void* operator[](uptr address){
     if(!hasSetup){
-      __sanitizer::Printf("  Setup isn't complete\n");
       return nullptr;
     }
+    //__sanitizer::Printf("MSM [%p]\n", (void*)address);
     uptr key = keyFromAddress(address);
     uptr subaddress = address & CHUNK_MASK;
-
-    __sanitizer::Printf("  Accessing map with Key %lx and subaddress %lu\n", key, subaddress);
+    
+    //__sanitizer::Printf("MSM [%p], key is %p, subaddress is %p\n", (void*)address, (void*)key, (void*)subaddress);
 
     Node* currentNode = firstNode;
     while(currentNode){
-      __sanitizer::Printf("  Checking Node with Key %lx\n", currentNode->key);
-      if(currentNode->key == key)
-        return currentNode->mmRegion[subaddress];
+      if(currentNode->key == key){
+        return (void*)(currentNode->mmRegion + subaddress);
+      }
       
-      if(key < currentNode->key)
+      if(key < currentNode->key){
         currentNode = currentNode->nextNode;
+      }
       // Greater
       else{
-        __sanitizer::Printf("    Inserting a Node between two others\n");
         Node* newNode = &freeNodes[nextFreeNode];
         nextFreeNode += 1;
         createNode(key, newNode);
@@ -95,11 +95,10 @@ public:
         newNode->previousNode->nextNode = newNode;
         newNode->nextNode = currentNode;
         currentNode->previousNode = newNode;
-        return newNode->mmRegion[subaddress];
+        return (void*)(newNode->mmRegion + subaddress);
       }
     }
 
-    __sanitizer::Printf("    Adding a new Node to the end\n");
     Node* newNode = &freeNodes[nextFreeNode];
     nextFreeNode += 1;
     createNode(key, newNode);
@@ -107,11 +106,11 @@ public:
     newNode->previousNode = lastNode;
     lastNode = newNode;
 
-    return newNode->mmRegion[subaddress];
+    return (void*)(newNode->mmRegion + subaddress);
   }
 
   Mapped_Shadow_Mem(){
-    __sanitizer::Printf("Creating shadow Mem\n");
+    __sanitizer::Printf("MAPPED_SHADOW_MEM CONSTRUCTOR BEGIN\n");
     nextFreeNode = 1;
     firstNode = lastNode = &freeNodes[0];
     char onStack = 0;
@@ -119,12 +118,13 @@ public:
     firstNode->nextNode = firstNode->previousNode = nullptr;
 
     hasSetup = true;
+    __sanitizer::Printf("MAPPED_SHADOW_MEM CONSTRUCTOR END\n");
   }
 
 private:
   struct Node{
     int fileDescriptor;
-    void** mmRegion;
+    uptr mmRegion;
     // When you mask and shift the address, this is what you get
     uptr key;
     Node* nextNode;
@@ -145,17 +145,16 @@ private:
 extern Mapped_Shadow_Mem msm;
 
 inline tysan_type_descriptor **shadow_for(const void *ptr) {
-  // auto* requestedAddress = (tysan_type_descriptor **)((((uptr)ptr) & AppMask()) * sizeof(ptr) +
-  //                                   ShadowAddr());
-  // msm[(uptr)(requestedAddress - ShadowAddr())];
-  // return requestedAddress;
-  __sanitizer::Printf("Getting shadow for memory\n");
-  auto maskedAddr = (((uptr)ptr) & AppMask()) * sizeof(ptr);
-  if(void* address = msm[maskedAddr])
-    return (tysan_type_descriptor **)address;
-  // Drop back
-  __sanitizer::Printf("  Dropping back to regular shadow memory\n");
-  return (tysan_type_descriptor **)maskedAddr + ShadowAddr();
+  uptr shadow = ((((uptr)ptr) & AppMask()) * sizeof(ptr) + ShadowAddr());
+  __sanitizer::Printf("SF shadow_for(%p). Classical shadow is %p\n", ptr, (void*)shadow);
+
+  if(void* mappedAddress = msm[shadow]){
+    __sanitizer::Printf("SF returning mapped shadow %p\n", mappedAddress);
+    return (tysan_type_descriptor**)mappedAddress;
+  }
+  
+  __sanitizer::Printf("SF Fell back to classical shadow %p\n", (void*)shadow);
+  return (tysan_type_descriptor**)shadow;
 }
 
 struct Flags {
