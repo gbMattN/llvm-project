@@ -31,7 +31,7 @@ static const SanitizerMask NeedsUbsanRt =
     SanitizerKind::LocalBounds | SanitizerKind::ImplicitConversion |
     SanitizerKind::Nullability | SanitizerKind::CFI |
     SanitizerKind::FloatDivideByZero | SanitizerKind::ObjCCast |
-    SanitizerKind::Vptr;
+    SanitizerKind::Vptr | SanitizerKind::AlignmentNew;
 static const SanitizerMask NeedsUbsanCxxRt =
     SanitizerKind::Vptr | SanitizerKind::CFI;
 static const SanitizerMask NotAllowedWithTrap = SanitizerKind::Vptr;

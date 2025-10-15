@@ -58,6 +58,8 @@ FEATURE(undefined_behavior_sanitizer_finegrained_feature_checks, true)
 // These are all part of undefined_behavior_sanitizer:
 FEATURE(alignment_sanitizer,
         LangOpts.Sanitize.has(SanitizerKind::Alignment))
+FEATURE(alignment_new_sanitizer,
+        LangOpts.Sanitize.has(SanitizerKind::AlignmentNew))
 FEATURE(bool_sanitizer,
         LangOpts.Sanitize.has(SanitizerKind::Bool))
 FEATURE(builtin_sanitizer,

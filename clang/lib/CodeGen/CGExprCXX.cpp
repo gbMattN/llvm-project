@@ -10,15 +10,22 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <cmath>
 #include "CGCUDARuntime.h"
 #include "CGCXXABI.h"
 #include "CGDebugInfo.h"
 #include "CGObjCRuntime.h"
 #include "CodeGenFunction.h"
 #include "ConstantEmitter.h"
+#include "SanitizerHandler.h"
 #include "TargetInfo.h"
 #include "clang/Basic/CodeGenOptions.h"
+#include "clang/Basic/Sanitizers.h"
 #include "clang/CodeGen/CGFunctionInfo.h"
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constant.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 
 using namespace clang;
@@ -1258,7 +1265,7 @@ void CodeGenFunction::EmitNewArrayInitializer(
   // Create the loop blocks.
   llvm::BasicBlock *EntryBB = Builder.GetInsertBlock();
   llvm::BasicBlock *LoopBB = createBasicBlock("new.loop");
-  llvm::BasicBlock *ContBB = createBasicBlock("new.loop.end");
+  llvm::BasicBlock *contNullBB = createBasicBlock("new.loop.end");
 
   // Find the end of the array, hoisted out of the loop.
   llvm::Value *EndPtr = Builder.CreateInBoundsGEP(
@@ -1270,7 +1277,7 @@ void CodeGenFunction::EmitNewArrayInitializer(
   if (!ConstNum) {
     llvm::Value *IsEmpty = Builder.CreateICmpEQ(CurPtr.emitRawPointer(*this),
                                                 EndPtr, "array.isempty");
-    Builder.CreateCondBr(IsEmpty, ContBB, LoopBB);
+    Builder.CreateCondBr(IsEmpty, contNullBB, LoopBB);
   }
 
   // Enter the loop.
@@ -1312,10 +1319,10 @@ void CodeGenFunction::EmitNewArrayInitializer(
   // Check whether we've gotten to the end of the array and, if so,
   // exit the loop.
   llvm::Value *IsEnd = Builder.CreateICmpEQ(NextPtr, EndPtr, "array.atend");
-  Builder.CreateCondBr(IsEnd, ContBB, LoopBB);
+  Builder.CreateCondBr(IsEnd, contNullBB, LoopBB);
   CurPtrPhi->addIncoming(NextPtr, Builder.GetInsertBlock());
 
-  EmitBlock(ContBB);
+  EmitBlock(contNullBB);
 }
 
 static void EmitNewInitializer(CodeGenFunction &CGF, const CXXNewExpr *E,
@@ -1686,23 +1693,90 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
                     sanitizePerformTypeCheck());
 
   llvm::BasicBlock *nullCheckBB = nullptr;
-  llvm::BasicBlock *contBB = nullptr;
+  llvm::BasicBlock *contNullBB = nullptr;
 
   // The null-check means that the initializer is conditionally
   // evaluated.
-  ConditionalEvaluation conditional(*this);
+  ConditionalEvaluation conditionalNull(*this);
 
   if (nullCheck) {
-    conditional.begin(*this);
+    conditionalNull.begin(*this);
 
     nullCheckBB = Builder.GetInsertBlock();
     llvm::BasicBlock *notNullBB = createBasicBlock("new.notnull");
-    contBB = createBasicBlock("new.cont");
+    contNullBB = createBasicBlock("new.cont");
 
     llvm::Value *isNull = Builder.CreateIsNull(allocation, "new.isnull");
-    Builder.CreateCondBr(isNull, contBB, notNullBB);
+    Builder.CreateCondBr(isNull, contNullBB, notNullBB);
     EmitBlock(notNullBB);
   }
+
+  // if (nullCheck) {
+  //   conditional.begin(*this);
+
+  //   nullCheckBB = Builder.GetInsertBlock();
+  //   llvm::BasicBlock *notNullBB = createBasicBlock("new.notnull");
+  //   contNullBB = createBasicBlock("new.cont");
+
+  //   //llvm::Value *isNull = Builder.CreateIsNull(allocation, "new.isnull");
+  //   const TargetInfo& TI = getContext().getTargetInfo();
+  //   unsigned defaultAlignment = TI.getNewAlign() / TI.getCharWidth();
+  //   unsigned alignmentMask = unsigned(std::pow(2.f, float(defaultAlignment)) - 1.f);
+  //   llvm::Value *masked = Builder.CreateAnd(
+  //     Builder.CreatePtrToInt(allocation.getBasePointer(), Builder.getInt32Ty()), 
+  //     Builder.getInt32(alignmentMask),
+  //     "new.and"
+  //   );
+  //   llvm::Value *isAligned = Builder.CreateIsNull(masked, "new.isnull");
+  //   Builder.CreateCondBr(isAligned, contNullBB, notNullBB);
+  //   EmitBlock(notNullBB);
+  // }
+
+  
+  bool alignCheck = SanOpts.has(SanitizerKind::AlignmentNew);
+
+  llvm::BasicBlock *alignCheckBB = nullptr;
+  llvm::BasicBlock *contAlignBB = nullptr;
+
+  ConditionalEvaluation conditionalAlign(*this);
+  if(alignCheck){
+    // conditionalAlign.begin(*this);
+
+    // alignCheckBB = Builder.GetInsertBlock();
+    // llvm::BasicBlock *alignmentCorrectBB = createBasicBlock("new.hasMinimumAlignment");
+    // contAlignBB = createBasicBlock("new.contalign");
+
+    const TargetInfo& TI = getContext().getTargetInfo();
+    unsigned defaultAlignment = TI.getNewAlign() / TI.getCharWidth();
+    unsigned alignmentMask = unsigned(std::pow(2.f, float(defaultAlignment)) - 1.f);
+    llvm::Value *masked = Builder.CreateAnd(
+      Builder.CreatePtrToInt(allocation.getBasePointer(), Builder.getInt32Ty()), 
+      Builder.getInt32(alignmentMask),
+      "new.minimumAlignmentMask"
+    );
+
+    llvm::Value *isAligned =  Builder.CreateIsNull(masked, "new.checkMinimumAlignment");
+    
+    SanitizerKind::SanitizerOrdinal CheckOrdinal = SanitizerKind::SanitizerOrdinal::SO_AlignmentNew;
+    SanitizerHandler CheckHandler = SanitizerHandler::AlignmentNew;
+    SanitizerDebugLocation SanScope(this, {CheckOrdinal}, CheckHandler);
+    
+
+    llvm::Constant *StaticData[] = {
+      EmitCheckSourceLocation(E->getBeginLoc()),
+      llvm::ConstantInt::get(Int32Ty, defaultAlignment)
+    };
+    llvm::Value *DynamicData[] = {allocation.getBasePointer()};
+    
+    EmitCheck(
+      std::make_pair(isAligned, CheckOrdinal),
+      CheckHandler, StaticData, DynamicData
+    );
+
+    //Builder.CreateCondBr(isAligned, contAlignBB, alignmentCorrectBB);
+    //EmitBlock(alignmentCorrectBB);
+  }
+  
 
   // If there's an operator delete, enter a cleanup to call it if an
   // exception is thrown.
@@ -1759,11 +1833,23 @@ llvm::Value *CodeGenFunction::EmitCXXNewExpr(const CXXNewExpr *E) {
     cleanupDominator->eraseFromParent();
   }
 
+  // if(alignCheck){
+  //   conditionalAlign.end(*this);
+
+  //   llvm::BasicBlock *alignedBB = Builder.GetInsertBlock();
+  //   EmitBlock(contAlignBB);
+
+  //   llvm::PHINode *PHI = Builder.CreatePHI(resultPtr->getType(), 2);
+  //   PHI->addIncoming(resultPtr, alignedBB);
+  //   PHI->addIncoming(llvm::Constant::getNullValue(resultPtr->getType()),
+  //                    alignCheckBB);
+  // }
+
   if (nullCheck) {
-    conditional.end(*this);
+    conditionalNull.end(*this);
 
     llvm::BasicBlock *notNullBB = Builder.GetInsertBlock();
-    EmitBlock(contBB);
+    EmitBlock(contNullBB);
 
     llvm::PHINode *PHI = Builder.CreatePHI(resultPtr->getType(), 2);
     PHI->addIncoming(resultPtr, notNullBB);

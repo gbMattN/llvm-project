@@ -44,6 +44,7 @@
                   "Integer multiplication overflowed")                         \
   SANITIZER_CHECK(NegateOverflow, negate_overflow, 0,                          \
                   "Integer negation overflowed")                               \
+  SANITIZER_CHECK(AlignmentNew, alignment_new, 0, "NEW ALIGNMENT WAAARRGGG")   \
   SANITIZER_CHECK(                                                             \
       NullabilityArg, nullability_arg, 0,                                      \
       "Passing null as an argument which is annotated with _Nonnull")          \

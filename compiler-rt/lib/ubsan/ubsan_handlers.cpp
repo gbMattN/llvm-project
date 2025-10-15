@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "ubsan_init.h"
 #include "ubsan_platform.h"
 #if CAN_SANITIZE_UB
 #include "ubsan_handlers.h"
@@ -201,6 +202,45 @@ void __ubsan::__ubsan_handle_alignment_assumption_abort(
     ValueHandle Offset) {
   GET_REPORT_OPTIONS(true);
   handleAlignmentAssumptionImpl(Data, Pointer, Alignment, Offset, Opts);
+  Die();
+}
+
+static void handleAlignmentNewImpl(AlignmentNewData *Data,
+            ValueHandle Pointer, ReportOptions Opts) {
+  
+  Printf("Hellooo from impl\n");
+  
+  Location Loc = Data->Loc.acquire();
+  ErrorType ET = ErrorType::AlignmentNew;
+  if (ignoreReport(Loc.getSourceLocation(), Opts, ET))
+    return;
+
+  Printf("Starting scoped report\n");
+  ScopedReport (Opts, Loc, ET);
+  Printf("Scoped!\n");
+  // volatile int* a = nullptr;
+  // *a = 5;
+
+  Diag(Loc, DL_Error, ErrorType::AlignmentAssumption, "ham");
+  // Printf("2\n");
+  // Diag(Loc, DL_Error, ET, "ham");
+  // Printf("2\n");
+  // Diag(Loc, DL_Error, ET, "operator new returned pointer %0 with alignment less "
+  //      "than targets minimum assumed alignment (%1).") << Pointer << Data->MinimumTargetAlignment;
+}
+
+void __ubsan::__ubsan_handle_alignment_new(AlignmentNewData *Data,
+            ValueHandle Pointer){
+  GET_REPORT_OPTIONS(false);
+  handleAlignmentNewImpl(Data, Pointer, Opts);
+  Printf("Nooot Dying\n");
+}
+void __ubsan::__ubsan_handle_alignment_new_abort(AlignmentNewData *Data,
+            ValueHandle Pointer){
+                                                    Printf("In abort, data is %p\n", Data);
+  GET_REPORT_OPTIONS(true);
+  handleAlignmentNewImpl(Data, Pointer, Opts);
+  Printf("Dying\n");
   Die();
 }
 

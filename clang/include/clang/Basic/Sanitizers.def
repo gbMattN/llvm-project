@@ -90,6 +90,7 @@ SANITIZER("leak", Leak)
 
 // UndefinedBehaviorSanitizer
 SANITIZER("alignment", Alignment)
+SANITIZER("alignment-new", AlignmentNew)
 SANITIZER("array-bounds", ArrayBounds)
 SANITIZER("bool", Bool)
 SANITIZER("builtin", Builtin)
@@ -148,7 +149,7 @@ SANITIZER("shadow-call-stack", ShadowCallStack)
 // -fsanitize=undefined includes all the sanitizers which have low overhead, no
 // ABI or address space layout implications, and only catch undefined behavior.
 SANITIZER_GROUP("undefined", Undefined,
-                Alignment | Bool | Builtin | ArrayBounds | Enum |
+                Alignment | AlignmentNew | Bool | Builtin | ArrayBounds | Enum |
                     FloatCastOverflow |
                     IntegerDivideByZero | NonnullAttribute | Null | ObjectSize |
                     PointerOverflow | Return | ReturnsNonnullAttribute | Shift |

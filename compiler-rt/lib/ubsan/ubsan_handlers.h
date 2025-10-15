@@ -13,6 +13,7 @@
 #define UBSAN_HANDLERS_H
 
 #include "ubsan_value.h"
+#include <stdint.h>
 
 namespace __ubsan {
 
@@ -48,6 +49,16 @@ struct AlignmentAssumptionData {
 /// caused by a misaligned pointer.
 RECOVERABLE(alignment_assumption, AlignmentAssumptionData *Data,
             ValueHandle Pointer, ValueHandle Alignment, ValueHandle Offset)
+
+struct AlignmentNewData {
+  SourceLocation Loc;
+  uint32_t MinimumTargetAlignment;
+};
+
+/// \brief Handle a runtime operator new alignment assuption check failure,
+/// caused by returning a value less than the targets minimum assumed alignment
+RECOVERABLE(alignment_new, AlignmentNewData *Data,
+            ValueHandle Pointer)
 
 struct OverflowData {
   SourceLocation Loc;
