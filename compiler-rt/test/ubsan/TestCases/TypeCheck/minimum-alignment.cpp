@@ -1,4 +1,4 @@
-// RUN: %clangxx %gmlt -fsanitize=alignment %s -o %t
+// RUN: %clangxx -fsanitize=alignment %s -o %t
 // RUN: %run %t 2>&1 | FileCheck %s
 
 // UNSUPPORTED: i386
