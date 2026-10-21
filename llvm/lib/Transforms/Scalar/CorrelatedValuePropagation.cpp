@@ -956,6 +956,7 @@ static bool processSRem(BinaryOperator *SDI, const ConstantRange &LCR,
   assert(SDI->getOpcode() == Instruction::SRem);
 
   if (LCR.abs().icmp(CmpInst::ICMP_ULT, RCR.abs())) {
+    salvageDebugInfo(*SDI);
     SDI->replaceAllUsesWith(SDI->getOperand(0));
     SDI->eraseFromParent();
     return true;
