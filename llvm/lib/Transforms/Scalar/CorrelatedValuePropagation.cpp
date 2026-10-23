@@ -996,6 +996,7 @@ static bool processSRem(BinaryOperator *SDI, const ConstantRange &LCR,
     Res->setDebugLoc(SDI->getDebugLoc());
   }
 
+  salvageDebugInfo(*SDI);
   SDI->replaceAllUsesWith(Res);
   SDI->eraseFromParent();
 
@@ -1058,6 +1059,7 @@ static bool processSDiv(BinaryOperator *SDI, const ConstantRange &LCR,
     Res->setDebugLoc(SDI->getDebugLoc());
   }
 
+  salvageDebugInfo(*SDI);
   SDI->replaceAllUsesWith(Res);
   SDI->eraseFromParent();
 
