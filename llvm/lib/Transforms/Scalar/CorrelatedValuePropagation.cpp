@@ -1098,6 +1098,7 @@ static bool processAShr(BinaryOperator *SDI, LazyValueInfo *LVI) {
   if (NegOneOrZero.contains(LRange)) {
     // ashr of -1 or 0 never changes the value, so drop the whole instruction
     ++NumAShrsRemoved;
+    salvageDebugInfo(*SDI);
     SDI->replaceAllUsesWith(SDI->getOperand(0));
     SDI->eraseFromParent();
     return true;
@@ -1112,6 +1113,7 @@ static bool processAShr(BinaryOperator *SDI, LazyValueInfo *LVI) {
   BO->takeName(SDI);
   BO->setDebugLoc(SDI->getDebugLoc());
   BO->setIsExact(SDI->isExact());
+  salvageDebugInfo(*SDI);
   SDI->replaceAllUsesWith(BO);
   SDI->eraseFromParent();
 
@@ -1130,6 +1132,7 @@ static bool processSExt(SExtInst *SDI, LazyValueInfo *LVI) {
   ZExt->takeName(SDI);
   ZExt->setDebugLoc(SDI->getDebugLoc());
   ZExt->setNonNeg();
+  salvageDebugInfo(*SDI);
   SDI->replaceAllUsesWith(ZExt);
   SDI->eraseFromParent();
 
